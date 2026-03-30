@@ -57,15 +57,41 @@ void compassInit();
 void compassDataListener(void *param);
 
 // RC522 RFID Reader =====================================================
+#include <SPI.h>
+#include <MFRC522.h>
 
+#define SPI_SCL_PIN // TODO : define the pin number for SPI SCL
+#define SPI_MOSI_PIN // TODO : define the pin number for SPI MOSI
+#define SPI_MISO_PIN // TODO : define the pin number for SPI MISO
 
+#define Front_RST_PIN // TODO : define the pin number for Front RFID RST
+#define Front_SS_PIN  // TODO : define the pin number for Front RFID SS (SDA)
+#define Center_RST_PIN  // TODO : define the pin number for Center RFID RST
+#define Center_SS_PIN   // TODO : define the pin number for Center RFID SS (SDA)
+
+MFRC522 frontRFID(Front_SS_PIN, Front_RST_PIN);
+MFRC522 centerRFID(Center_SS_PIN, Center_RST_PIN);
+
+void mfrcInit();
+void mfrcDataListener(void *param);
+
+// =======================================================================
 void setup()
 {
+	// Initialize Serial==================================================
 	#if __DEBUG__
 		Serial.begin(115200);
 		while(!Serial) delay(50);
 	#endif
+
+	// Initialize UART Communication======================================
 	uartInit();
+
+	// Initialize Compass=================================================
+	compassInit();
+
+	// Initialize RFID Reader=============================================
+	mfrcInit();
 }
 
 void loop()
@@ -73,6 +99,7 @@ void loop()
 
 }
 
+// UART Communication ======================================================
 void uartInit()
 {
 	uart_config_t uartConfig = 
@@ -206,4 +233,28 @@ void uartPrintf(const uart_port_t uart_num, const char *format, ...)
     vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);
     uart_write_bytes(uart_num, buffer, strlen(buffer));
+}
+
+// QMC5883P Magnetometer ===================================================
+
+void compassInit()
+{
+
+}
+
+void compassDataListener(void *param)
+{
+
+}
+
+// MFRC522 RFID Reader =====================================================
+
+void mfrcInit()
+{
+
+}
+
+void mfrcDataListener(void *param)
+{
+
 }
