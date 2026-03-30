@@ -75,7 +75,7 @@ Adafruit_QMC5883P compass;
 volatile float azimuth = -9999.0F; // Invalid initial value to indicate uninitialized state
 
 void compassInit();
-void compassDataUpdate(void *param);
+void compassDataPolling(void *param);
 
 // RC522 RFID Reader =====================================================
 #include <SPI.h>
@@ -90,11 +90,41 @@ void compassDataUpdate(void *param);
 #define Center_RST_PIN  // FIXME : define the pin number for Center RFID RST
 #define Center_SS_PIN   // FIXME : define the pin number for Center RFID SS (SDA)
 
+#define MFRC_LISTNER_CORE 1
+#define MFRC_UPDATE_INTERVAL_MS 100
+
 MFRC522 frontRFID(Front_SS_PIN, Front_RST_PIN);
 MFRC522 centerRFID(Center_SS_PIN, Center_RST_PIN);
 
 void mfrcInit();
-void mfrcDataListener(void *param);
+void mfrcDataPolling(void *param);
+void mrfcRobotAction(const RFIDData *data);
+
+typedef struct 
+{
+	byte uid[10];
+	byte uidLength;
+	float angle;
+} RFIDData;
+
+constexpr RFIDData myRFIDData[10] =
+{
+	{
+		{0xDE, 0xAD, 0xBE, 0xEF}, // FIXME : define the UID for each RFID tag
+		4,
+		0.0F // FIXME : define the angle associated with each RFID tag
+	},
+	{
+		{0xBA, 0xAD, 0xF0, 0x0D}, // FIXME : define the UID for each RFID tag
+		4,
+		90.0F // FIXME : define the angle associated with each RFID tag
+	},
+	{
+		{0xFE, 0xED, 0xFA, 0xCE}, // FIXME : define the UID for each RFID tag
+		4,
+		180.0F // FIXME : define the angle associated with each RFID tag
+	}
+};
 
 // =======================================================================
 void setup()
@@ -200,6 +230,11 @@ void vexUartListener(void *param)
 	}
 }
 
+void vexUartUpdate(void)
+{
+	// FIXME : Implement any periodic updates or checks needed for VEX UART communication
+}
+
 void voiceUartListener(void *param)
 {
 	uart_event_t event;
@@ -274,8 +309,8 @@ void compassInit()
 
 	xTaskCreatePinnedToCore
 	(
-		compassDataUpdate,
-		"Compass Data Update",
+		compassDataPolling,
+		"Compass Data Polling",
 		4096,
 		NULL,
 		1,
@@ -285,7 +320,7 @@ void compassInit()
 
 }
 
-void compassDataUpdate(void *param)
+void compassDataPolling(void *param)
 {
 	TickType_t lastUpdateTick = 0;
 
@@ -326,10 +361,88 @@ void compassDataUpdate(void *param)
 
 void mfrcInit()
 {
+	SPI.begin(SPI_SCL_PIN, SPI_MISO_PIN, SPI_MOSI_PIN);
+	frontRFID.PCD_Init();
+	centerRFID.PCD_Init();
 
+	xTaskCreatePinnedToCore
+	(
+		mfrcDataPolling,
+		"MFRC Data Polling",
+		4096,
+		NULL,
+		1,
+		NULL,
+		UART_LISTNER_CORE
+	);
 }
 
-void mfrcDataListener(void *param)
+void mfrcDataPolling(void *param)
 {
+	TickType_t lastUpdateTick = 0;
+	while(true)
+	{
+		if(frontRFID.PICC_IsNewCardPresent() && frontRFID.PICC_ReadCardSerial())
+		{	
+			#if __DEBUG__
+				Serial.print("Front RFID Card Detected - UID: ");
+				for(byte i = 0; i < frontRFID.uid.size; i++)
+				{
+					Serial.printf("%02X ", frontRFID.uid.uidByte[i]);
+				}
+				Serial.println();
+			#endif
+			// TODO : decrease robot speed to align position by tagging card on center RFID.
+		}
+		if(centerRFID.PICC_IsNewCardPresent() && centerRFID.PICC_ReadCardSerial())
+		{
+			RFIDData detectedData;
+			memcpy(detectedData.uid, centerRFID.uid.uidByte, centerRFID.uid.size);
+			detectedData.uidLength = centerRFID.uid.size;
+			detectedData.angle = 0.0F;
+			#if __DEBUG__
+				Serial.print("Center RFID Card Detected - UID: ");
+				for(byte i = 0; i < centerRFID.uid.size; i++)
+				{
+					Serial.printf("%02X ", centerRFID.uid.uidByte[i]);
+				}
+				Serial.println();
+			#endif
 
+			mfrcRobotAction(&detectedData);
+		}
+
+		xTaskDelayUntil(&lastUpdateTick, pdMS_TO_TICKS(MFRC_UPDATE_INTERVAL_MS));
+	}
+}
+
+void mfrcRobotAction(const RFIDData *data)
+{
+	byte uid[10];
+	bool matchFound = false;
+	memcpy(uid, data->uid, data->uidLength);
+	for(const auto &entry : myRFIDData)
+	{
+		if(entry.uidLength == data->uidLength && memcmp(entry.uid, uid, data->uidLength) == 0)
+		{
+			float targetAngle = entry.angle;
+			matchFound = true;
+			#if __DEBUG__
+				Serial.printf("Matched RFID Tag - UID: ");
+				for(byte i = 0; i < entry.uidLength; i++)
+				{
+					Serial.printf("%02X ", entry.uid[i]);
+				}
+				Serial.printf(", Target Angle: %.2f\n", targetAngle);
+			#endif
+			// TODO : Implement robot action to align to targetAngle using compass data
+		}
+
+		if(!matchFound)
+		{
+			#if __DEBUG__
+				Serial.println("No matching RFID tag found in predefined data.");
+			#endif
+		}
+	}
 }
