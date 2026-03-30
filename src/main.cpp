@@ -1,10 +1,21 @@
 #include <RTOS.h>
 #define __DEBUG__ true
+#define CurrentBoardID 0x00
 
 // arduino core ============================================================
 #include <Arduino.h>
 void setup();
 void loop();
+
+// Project Board Info ======================================================
+// Read Readme.md for more details about the board and pinout
+#define MAX_BOARDS //FIXME : define the maximum number of boards in the system
+
+constexpr uint8_t MAC_ADDR [MAX_BOARDS][6] =
+{
+
+};
+
 
 // UART Communication ======================================================
 #include "driver/uart.h"
@@ -15,12 +26,12 @@ void loop();
 #define UART_EVENT_QUEUE_SIZE 20
 
 #define VEX UART_NUM_1
-#define UART1_RX_PIN //TODO : define the pin number for UART1 RX
-#define UART1_TX_PIN //TODO : define the pin number for UART1 TX
+#define UART1_RX_PIN //FIXME : define the pin number for UART1 RX
+#define UART1_TX_PIN //FIXME : define the pin number for UART1 TX
 
 #define VoiceRecog UART_NUM_2
-#define UART2_RX_PIN //TODO : define the pin number for UART2 RX
-#define UART2_TX_PIN //TODO : define the pin number for UART2 TX
+#define UART2_RX_PIN //FIXME : define the pin number for UART2 RX
+#define UART2_TX_PIN //FIXME : define the pin number for UART2 TX
 
 #define UART_LISTNER_CORE 0
 #define UART_BAUD_RATE 115200
@@ -38,36 +49,46 @@ volatile TickType_t lastVoiceSerialTick = 0;
 
 void uartInit();
 void vexUartListener(void *param);
+void vexUartUpdate(void);
 void voiceUartListener(void *param);
 void onSerialRecieved(const uart_port_t uart_num, const char* cmdText);
 void uartPrintf(const uart_port_t uart_num, const char *format, ...);
+
+// ESPNOW Communication ==================================================
+
+
 
 // QMC5883P Magnetometer =================================================
 #include "Adafruit_QMC5883P.h"
 #include "Wire.h"
 
-#define I2CSDA // TODO : define the pin number for I2CSDA
-#define I2CSCL // TODO : define the pin number for I2CSCL
+constexpr float GausThreshold = 0.1F; // FIXME : define the threshold for detecting significant changes in magnetic field
+#define I2CSDA // FIXME : define the pin number for I2CSDA
+#define I2CSCL // FIXME : define the pin number for I2CSCL
+#define I2C_FREQ 400000U
+
+#define COMPASS_LISTNER_CORE 1
+#define COMPASS_UPDATE_INTERVAL_MS 100
 
 TwoWire I2C1 = TwoWire(0);
 Adafruit_QMC5883P compass;
-volatile bool compassReady = false;
+volatile float azimuth = -9999.0F; // Invalid initial value to indicate uninitialized state
 
 void compassInit();
-void compassDataListener(void *param);
+void compassDataUpdate(void *param);
 
 // RC522 RFID Reader =====================================================
 #include <SPI.h>
 #include <MFRC522.h>
 
-#define SPI_SCL_PIN // TODO : define the pin number for SPI SCL
-#define SPI_MOSI_PIN // TODO : define the pin number for SPI MOSI
-#define SPI_MISO_PIN // TODO : define the pin number for SPI MISO
+#define SPI_SCL_PIN // FIXME : define the pin number for SPI SCL
+#define SPI_MOSI_PIN // FIXME : define the pin number for SPI MOSI
+#define SPI_MISO_PIN // FIXME : define the pin number for SPI MISO
 
-#define Front_RST_PIN // TODO : define the pin number for Front RFID RST
-#define Front_SS_PIN  // TODO : define the pin number for Front RFID SS (SDA)
-#define Center_RST_PIN  // TODO : define the pin number for Center RFID RST
-#define Center_SS_PIN   // TODO : define the pin number for Center RFID SS (SDA)
+#define Front_RST_PIN // FIXME : define the pin number for Front RFID RST
+#define Front_SS_PIN  // FIXME : define the pin number for Front RFID SS (SDA)
+#define Center_RST_PIN  // FIXME : define the pin number for Center RFID RST
+#define Center_SS_PIN   // FIXME : define the pin number for Center RFID SS (SDA)
 
 MFRC522 frontRFID(Front_SS_PIN, Front_RST_PIN);
 MFRC522 centerRFID(Center_SS_PIN, Center_RST_PIN);
@@ -239,12 +260,66 @@ void uartPrintf(const uart_port_t uart_num, const char *format, ...)
 
 void compassInit()
 {
+	I2C1.begin(I2CSDA, I2CSCL, I2C_FREQ);
+
+	if(!compass.begin(QMC5883P_DEFAULT_ADDR, &I2C1))
+	{
+		#if __DEBUG__
+			Serial.println("Failed to initialize QMC5883P compass!");
+		#endif
+		return;
+	}
+	
+	compass.setMode(QMC5883P_MODE_NORMAL);
+
+	xTaskCreatePinnedToCore
+	(
+		compassDataUpdate,
+		"Compass Data Update",
+		4096,
+		NULL,
+		1,
+		NULL,
+		COMPASS_LISTNER_CORE
+	);
 
 }
 
-void compassDataListener(void *param)
+void compassDataUpdate(void *param)
 {
+	TickType_t lastUpdateTick = 0;
 
+	while(true)
+	{
+		if(!compass.isDataReady())
+		{
+			#if __DEBUG__
+				Serial.println("Compass data not ready, skipping update.");
+			#endif
+		}
+		else
+		{
+			int16_t ix, iy, iz;
+			float fx, fy, fz;
+			float gx, gy, gz;
+			compass.getRawMagnetic(&ix, &iy, &iz);
+			fx = (float)ix;
+			fy = (float)iy;
+			fz = (float)iz;
+			compass.getGaussField(&gx, &gy, &gz);
+
+			float magG = sqrtf(gx * gx + gy * gy + gz * gz);
+			if(magG > GausThreshold)
+			{
+				azimuth = atan2f(gy, gx) * 180.0 / M_PI;
+			}
+
+			#if __DEBUG__
+				Serial.printf("Compass Update - Raw: (%d, %d, %d), Gauss: (%.2f, %.2f, %.2f), Mag: %.2f G\n", ix, iy, iz, gx, gy, gz, magG);
+			#endif
+		}
+		xTaskDelayUntil(&lastUpdateTick, pdMS_TO_TICKS(COMPASS_UPDATE_INTERVAL_MS));
+	}
 }
 
 // MFRC522 RFID Reader =====================================================
