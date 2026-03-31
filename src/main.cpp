@@ -1,6 +1,7 @@
 #include <RTOS.h>
 #define __DEBUG__ true
 #define CurrentBoardID 0x00
+#define CurrentBoard 0 // FIXME : define the current board index for ESP-NOW communication, should be set according to the actual board ID in MAC_ADDR array
 
 // arduino core ============================================================
 #include <Arduino.h>
@@ -14,6 +15,7 @@ void loop();
 constexpr uint8_t MAC_ADDR [MAX_BOARDS][6] = 
 {
 	{0x20, 0x6E, 0xF1, 0x33, 0x4D, 0xD0}, // ROBOT BOARD 1
+
 	{0x3C, 0x84, 0x27, 0xC3, 0xED, 0xF0}, // AI Board 1
 	{0x48, 0xCA, 0x43, 0x2F, 0x77, 0x58}, // AI Board 2
 	{0x3C, 0x84, 0x27, 0xC4, 0x3F, 0xF4}, // AI Board 3
@@ -118,16 +120,17 @@ void compassDataPolling(void *param);
 MFRC522 frontRFID(Front_SS_PIN, Front_RST_PIN);
 MFRC522 centerRFID(Center_SS_PIN, Center_RST_PIN);
 
-void mfrcInit();
-void mfrcDataPolling(void *param);
-void mrfcRobotAction(const RFIDData *data);
-
 typedef struct 
 {
 	byte uid[10];
 	byte uidLength;
 	float angle;
 } RFIDData;
+
+
+void mfrcInit();
+void mfrcDataPolling(void *param);
+void mfrcRobotAction(const RFIDData *data);
 
 constexpr RFIDData myRFIDData[10] =
 {
@@ -165,6 +168,9 @@ void setup()
 
 	// Initialize RFID Reader=============================================
 	mfrcInit();
+
+	// Initialize ESP-NOW Communication===================================
+	espNowInit();
 }
 
 void loop()
@@ -229,6 +235,7 @@ void vexUartListener(void *param)
 			switch(event.type)
 			{
 				case UART_DATA:
+				{
 					size_t readLen = min(event.size, sizeof(data) - 1);
 					int len = uart_read_bytes(VEX, data, readLen, UART_BLOCK_TICKS);
 					if(len > 0)
@@ -237,10 +244,22 @@ void vexUartListener(void *param)
 						onSerialRecieved(VEX, (char *)data);
 					}
 					break;
+				}
+				case UART_BUFFER_FULL:
+				{
+					#if __DEBUG__
+						Serial.println("VEX UART Buffer Full");
+					#endif
+					break;
+				}
 				default:
+				{
 				#if __DEBUG__
 					Serial.printf("Unknown VEX UART Event Type : %d\n", event.type);
 				#endif
+					break;
+			
+				}
 			}
 		}
 		#if __DEBUG__
@@ -272,6 +291,7 @@ void voiceUartListener(void *param)
 			switch(event.type)
 			{
 				case UART_DATA:
+				{
 					size_t readLen = min(event.size, sizeof(data) - 1);
 					int len = uart_read_bytes(VoiceRecog, data, readLen, UART_BLOCK_TICKS);
 					if(len > 0)
@@ -280,10 +300,13 @@ void voiceUartListener(void *param)
 						onSerialRecieved(VoiceRecog, (char *)data);
 					}
 					break;
+				}
 				default:
-				#if __DEBUG__
-					Serial.printf("Unknown Voice UART Event Type : %d\n", event.type);
-				#endif
+				{
+					#if __DEBUG__
+						Serial.printf("Unknown Voice UART Event Type : %d\n", event.type);
+					#endif
+				}
 			}
 		}
 		#if __DEBUG__
@@ -383,7 +406,7 @@ void compassDataPolling(void *param)
 
 void mfrcInit()
 {
-	SPI.begin(SPI_SCL_PIN, SPI_MISO_PIN, SPI_MOSI_PIN);
+	SPI.begin(SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN);
 	frontRFID.PCD_Init();
 	centerRFID.PCD_Init();
 
@@ -488,7 +511,7 @@ void espNowInit(void)
         esp_now_peer_info_t peerInfo = {};
         peerInfo.channel = ESP_NOW_CHANNEL;
         peerInfo.encrypt = false;
-        if(i == CurrentBoard)
+        if(i == CurrentBoard)	//TODO : refactor with CurrentBoardID
         {
             peerInfo.peer_addr[0] = 0x02; // Locally Administered dummy Address
         }
