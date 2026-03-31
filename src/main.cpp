@@ -9,12 +9,14 @@ void loop();
 
 // Project Board Info ======================================================
 // Read Readme.md for more details about the board and pinout
-#define MAX_BOARDS //FIXME : define the maximum number of boards in the system
+#define MAX_BOARDS 4 
 
-constexpr uint8_t MAC_ADDR [MAX_BOARDS][6] = // FIXME : define the MAC addresses for each board in the system
+constexpr uint8_t MAC_ADDR [MAX_BOARDS][6] = 
 {
-	{0x00, 0x00, 0x00, 0x00, 0x00, 0x01}, // Board 1
-	{0x00, 0x00, 0x00, 0x00, 0x00, 0x02}, // Board 2
+	{0x20, 0x6E, 0xF1, 0x33, 0x4D, 0xD0}, // ROBOT BOARD 1
+	{0x3C, 0x84, 0x27, 0xC3, 0xED, 0xF0}, // AI Board 1
+	{0x48, 0xCA, 0x43, 0x2F, 0x77, 0x58}, // AI Board 2
+	{0x3C, 0x84, 0x27, 0xC4, 0x3F, 0xF4}, // AI Board 3
 	// Add more boards as needed
 };
 
@@ -27,12 +29,12 @@ constexpr uint8_t MAC_ADDR [MAX_BOARDS][6] = // FIXME : define the MAC addresses
 #define UART_EVENT_QUEUE_SIZE 20
 
 #define VEX UART_NUM_1
-#define UART1_RX_PIN //FIXME : define the pin number for UART1 RX
-#define UART1_TX_PIN //FIXME : define the pin number for UART1 TX
+#define UART1_RX_PIN D4
+#define UART1_TX_PIN  D5
 
 #define VoiceRecog UART_NUM_2
-#define UART2_RX_PIN //FIXME : define the pin number for UART2 RX
-#define UART2_TX_PIN //FIXME : define the pin number for UART2 TX
+#define UART2_RX_PIN D9
+#define UART2_TX_PIN D12
 
 #define UART_LISTNER_CORE 0
 #define UART_BAUD_RATE 115200
@@ -83,8 +85,8 @@ void espNowPrintf(const uint8_t *mac_addr, const char *format, ...);
 #include "Wire.h"
 
 constexpr float GausThreshold = 0.1F; // FIXME : define the threshold for detecting magnet stick
-#define I2CSDA // FIXME : define the pin number for I2CSDA
-#define I2CSCL // FIXME : define the pin number for I2CSCL
+#define I2CSDA D3
+#define I2CSCL D2
 #define I2C_FREQ 400000U
 
 #define COMPASS_LISTNER_CORE 1
@@ -101,14 +103,14 @@ void compassDataPolling(void *param);
 #include <SPI.h>
 #include <MFRC522.h>
 
-#define SPI_SCL_PIN // FIXME : define the pin number for SPI SCL
-#define SPI_MOSI_PIN // FIXME : define the pin number for SPI MOSI
-#define SPI_MISO_PIN // FIXME : define the pin number for SPI MISO
+#define SPI_SCL_PIN A0
+#define SPI_MOSI_PIN A2 
+#define SPI_MISO_PIN A1 
 
-#define Front_RST_PIN // FIXME : define the pin number for Front RFID RST
-#define Front_SS_PIN  // FIXME : define the pin number for Front RFID SS (SDA)
-#define Center_RST_PIN  // FIXME : define the pin number for Center RFID RST
-#define Center_SS_PIN   // FIXME : define the pin number for Center RFID SS (SDA)
+#define Front_RST_PIN B0
+#define Front_SS_PIN  A3
+#define Center_RST_PIN A5
+#define Center_SS_PIN  A4
 
 #define MFRC_LISTNER_CORE 1
 #define MFRC_UPDATE_INTERVAL_MS 100
