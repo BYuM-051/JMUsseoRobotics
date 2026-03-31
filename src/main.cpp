@@ -11,11 +11,12 @@ void loop();
 // Read Readme.md for more details about the board and pinout
 #define MAX_BOARDS //FIXME : define the maximum number of boards in the system
 
-constexpr uint8_t MAC_ADDR [MAX_BOARDS][6] =
+constexpr uint8_t MAC_ADDR [MAX_BOARDS][6] = // FIXME : define the MAC addresses for each board in the system
 {
-
+	{0x00, 0x00, 0x00, 0x00, 0x00, 0x01}, // Board 1
+	{0x00, 0x00, 0x00, 0x00, 0x00, 0x02}, // Board 2
+	// Add more boards as needed
 };
-
 
 // UART Communication ======================================================
 #include "driver/uart.h"
@@ -55,14 +56,33 @@ void onSerialRecieved(const uart_port_t uart_num, const char* cmdText);
 void uartPrintf(const uart_port_t uart_num, const char *format, ...);
 
 // ESPNOW Communication ==================================================
+#include <WiFi.h>
+#include <esp_now.h>
 
+#define ESP_NOW_CHANNEL 2U
+#define ESP_NOW_LISTENER_CORE 0
 
+typedef struct 
+{
+	uint8_t macAddr[6];
+	uint8_t data[250];
+	int len;
+} espNowPacket_t;
+
+QueueHandle_t espNowRecvQueue;
+
+void espNowInit(void);
+void espNowDataRecvCallback(const uint8_t *mac_addr, const uint8_t *data, int len);
+void espNowDataSendCallback(const uint8_t *mac_addr, esp_now_send_status_t status);
+void espNowListnener(void *param);
+void onESPNowDataReceived(char *cmdText);
+void espNowPrintf(const uint8_t *mac_addr, const char *format, ...);
 
 // QMC5883P Magnetometer =================================================
 #include "Adafruit_QMC5883P.h"
 #include "Wire.h"
 
-constexpr float GausThreshold = 0.1F; // FIXME : define the threshold for detecting significant changes in magnetic field
+constexpr float GausThreshold = 0.1F; // FIXME : define the threshold for detecting magnet stick
 #define I2CSDA // FIXME : define the pin number for I2CSDA
 #define I2CSCL // FIXME : define the pin number for I2CSCL
 #define I2C_FREQ 400000U
@@ -445,4 +465,151 @@ void mfrcRobotAction(const RFIDData *data)
 			#endif
 		}
 	}
+}
+
+// ESPNOW Communication ====================================================
+
+// ESP NOW Communication ========================================================
+void espNowInit(void)
+{
+    WiFi.mode(WIFI_STA);
+    if(esp_now_init() != ESP_OK)
+    {
+        #ifdef __DEBUG__
+            Serial.println("ESP-NOW Initialization Failed");
+        #endif
+        return;
+    }
+
+    for(int i = 0 ; i < MAX_BOARDS ; i++)
+    {
+        esp_now_peer_info_t peerInfo = {};
+        peerInfo.channel = ESP_NOW_CHANNEL;
+        peerInfo.encrypt = false;
+        if(i == CurrentBoard)
+        {
+            peerInfo.peer_addr[0] = 0x02; // Locally Administered dummy Address
+        }
+        else
+        {
+            memcpy(peerInfo.peer_addr, MAC_ADDR[i], 6);
+        }
+        if(esp_now_add_peer(&peerInfo) != ESP_OK)
+        {
+            #ifdef __DEBUG__
+                Serial.println("Failed to add ESP-NOW peer");
+            #endif
+        }
+        else
+        {
+            #ifdef __DEBUG__
+            Serial.print("Added ESP-NOW peer: ");
+            Serial.printf("%02X:%02X:%02X:%02X:%02X:%02X\n", peerInfo.peer_addr[0], peerInfo.peer_addr[1], peerInfo.peer_addr[2], peerInfo.peer_addr[3], peerInfo.peer_addr[4], peerInfo.peer_addr[5]);
+            #endif
+        }
+}
+
+    esp_now_register_recv_cb(espNowDataRecvCallback);
+    esp_now_register_send_cb(espNowDataSendCallback);
+    espNowRecvQueue = xQueueCreate(10, sizeof(espNowPacket_t));
+    xTaskCreatePinnedToCore
+    (
+        espNowListnener,
+        "espNowListener",
+        4096,
+        NULL,
+        2,
+        NULL,
+        ESP_NOW_LISTENER_CORE
+    );
+}
+
+void espNowDataRecvCallback(const uint8_t *mac_addr, const uint8_t *data, int len)
+{
+    espNowPacket_t buffer;
+    memcpy(buffer.macAddr, mac_addr, 6);
+    memcpy(buffer.data, data, len);
+    buffer.len = len;
+    xQueueSendFromISR(espNowRecvQueue, &buffer, NULL);
+}
+
+void espNowListnener(void *param)
+{
+    espNowPacket_t packet;
+    while(true)
+    {
+        if(xQueueReceive(espNowRecvQueue, &packet, portMAX_DELAY))
+        {
+            #ifdef __DEBUG__
+                Serial.println("ESP-NOW Data Received");
+            #endif
+            boolean isKnownSender = false;
+            for(int i = 0 ; i < MAX_BOARDS ; i++)
+            {
+                if(memcmp(packet.macAddr, MAC_ADDR[i], 6) == 0)
+                {
+                    isKnownSender = true;
+                    break;
+                }
+            }
+
+            if(!isKnownSender)
+            {
+                #ifdef __DEBUG__
+                    Serial.println("Unknown ESP-NOW Sender, Ignoring Packet");
+                #endif
+                continue;
+            }
+            else
+            {
+                if(packet.len > 0) 
+                {
+                    packet.data[packet.len] = '\0';
+                    onESPNowDataReceived((char *)packet.data);
+                }
+                #ifdef __DEBUG__
+                    else
+                    {
+                        Serial.println("Received Empty ESP-NOW Packet");
+                    }
+                #endif
+            }
+        }
+    }
+}
+
+void onESPNowDataReceived(char *cmdText)
+{
+    if(strcmp(cmdText, "PONG") == 0)
+    {
+        // Ping Pong Command, Do nothing
+    }
+    else if(strcmp(cmdText, "") == 0)
+    {
+
+    }
+    else
+    {
+        #ifdef __DEBUG__
+            Serial.printf("Unknown ESP-NOW Command Received : %s\n", cmdText);
+        #endif
+    }
+}
+
+void espNowDataSendCallback(const uint8_t *mac_addr, esp_now_send_status_t status)
+{
+    #ifdef __DEBUG__
+        Serial.print("ESP-NOW Data Send Callback, Status: ");
+        Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Success" : "Failure");
+    #endif
+}
+
+void espNowPrintf(const uint8_t *mac_addr, const char *format, ...)
+{
+    char buffer[250];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    esp_now_send(mac_addr, (uint8_t *)buffer, strlen(buffer));
 }
