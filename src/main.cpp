@@ -103,14 +103,14 @@ void compassDataPolling(void *param);
 #include <SPI.h>
 #include <MFRC522.h>
 
-#define SPI_SCL_PIN A0
-#define SPI_MOSI_PIN A2 
-#define SPI_MISO_PIN A1 
+#define SPI_SCK_PIN A0
+#define SPI_MOSI_PIN A2
+#define SPI_MISO_PIN A1
 
-#define Front_RST_PIN B0
+#define Front_RST_PIN A4
 #define Front_SS_PIN  A3
-#define Center_RST_PIN A5
-#define Center_SS_PIN  A4
+#define Center_RST_PIN A6
+#define Center_SS_PIN  A5
 
 #define MFRC_LISTNER_CORE 1
 #define MFRC_UPDATE_INTERVAL_MS 100
