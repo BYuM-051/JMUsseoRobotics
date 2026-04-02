@@ -18,7 +18,7 @@ constexpr uint8_t MAC_ADDR [MAX_BOARDS][6] =
 
 	{0x3C, 0x84, 0x27, 0xC3, 0xED, 0xF0}, // AI Board 1
 	{0x48, 0xCA, 0x43, 0x2F, 0x77, 0x58}, // AI Board 2
-	{0x3C, 0x84, 0x27, 0xC4, 0x3F, 0xF4}, // AI Board 3
+	{0x3C, 0x84, 0x27, 0xC4, 0x3F, 0xF4} // AI Board 3
 	// Add more boards as needed
 };
 
@@ -32,7 +32,7 @@ constexpr uint8_t MAC_ADDR [MAX_BOARDS][6] =
 
 #define VEX UART_NUM_1
 #define UART1_RX_PIN D4
-#define UART1_TX_PIN  D5
+#define UART1_TX_PIN D5
 
 #define VoiceRecog UART_NUM_2
 #define UART2_RX_PIN D9
@@ -41,6 +41,8 @@ constexpr uint8_t MAC_ADDR [MAX_BOARDS][6] =
 #define UART_LISTNER_CORE 0
 #define UART_BAUD_RATE 115200
 #define UART_BLOCK_TICKS pdMS_TO_TICKS(portMAX_DELAY)
+#define VEX_UPDATE_INTERVAL_MS 50	// NOTE : 20hz update rate for VEX UART communication, can be adjusted based on performance needs
+#define VEX_RFID_ALIGN_INTERVAL_MS 10 // NOTE : 100hz update rate for robot alignment after RFID tag detection, can be adjusted based on performance needs and robot's turning precision
 
 #if __DEBUG__
 	#undef UART_BLOCK_TICKS
@@ -51,6 +53,19 @@ QueueHandle_t vexV5SerialQueue;
 QueueHandle_t voiceSerialQueue;
 volatile TickType_t lastVexSerialTick = 0;
 volatile TickType_t lastVoiceSerialTick = 0;
+
+volatile byte leftMotorOutput = 0;
+volatile byte rightMotorOutput = 0;
+
+typedef enum
+{
+	ROBOT_STOP = 0,
+	ROBOT_MOVE_WITH_COMPASS,
+	ROBOT_RFID_APPROACHING,
+	ROBOT_RFID_ALIGNING
+} vexAction_t;
+
+volatile vexAction_t currentVexAction = ROBOT_STOP;
 
 void uartInit();
 void vexUartListener(void *param);
@@ -92,7 +107,7 @@ constexpr float GausThreshold = 0.1F; // FIXME : define the threshold for detect
 #define I2C_FREQ 400000U
 
 #define COMPASS_LISTNER_CORE 1
-#define COMPASS_UPDATE_INTERVAL_MS 100
+#define COMPASS_UPDATE_INTERVAL_MS 20	// NOTE : 50hz update rate, can be adjusted based on performance needs
 
 TwoWire I2C1 = TwoWire(0);
 Adafruit_QMC5883P compass;
@@ -115,7 +130,8 @@ void compassDataPolling(void *param);
 #define Center_SS_PIN  A5
 
 #define MFRC_LISTNER_CORE 1
-#define MFRC_UPDATE_INTERVAL_MS 100
+#define MFRC_UPDATE_INTERVAL_MS 100 // NOTE : 10hz update rate, can be adjusted based on performance needs
+#define RFIDAlignDeadband 1.5F // FIXME : define the acceptable angle error for robot alignment after RFID tag detection, can be adjusted based on performance needs and robot's turning precision
 
 MFRC522 frontRFID(Front_SS_PIN, Front_RST_PIN);
 MFRC522 centerRFID(Center_SS_PIN, Center_RST_PIN);
@@ -130,24 +146,25 @@ typedef struct
 
 void mfrcInit();
 void mfrcDataPolling(void *param);
+void mfrcRobotAction(void *param);
 void mfrcRobotAction(const RFIDData *data);
 
-constexpr RFIDData myRFIDData[10] =
+constexpr RFIDData myRFIDData[10] = //FIXME : define the UID for each RFID tag and the associated angle for robot actions
 {
 	{
-		{0xDE, 0xAD, 0xBE, 0xEF}, // FIXME : define the UID for each RFID tag
+		{0xDE, 0xAD, 0xBE, 0xEF},
 		4,
-		0.0F // FIXME : define the angle associated with each RFID tag
+		0.0F
 	},
 	{
-		{0xBA, 0xAD, 0xF0, 0x0D}, // FIXME : define the UID for each RFID tag
+		{0xBA, 0xAD, 0xF0, 0x0D},
 		4,
-		90.0F // FIXME : define the angle associated with each RFID tag
+		90.0F
 	},
 	{
-		{0xFE, 0xED, 0xFA, 0xCE}, // FIXME : define the UID for each RFID tag
+		{0xFE, 0xED, 0xFA, 0xCE},
 		4,
-		180.0F // FIXME : define the angle associated with each RFID tag
+		180.0F
 	}
 };
 
@@ -273,7 +290,40 @@ void vexUartListener(void *param)
 
 void vexUartUpdate(void)
 {
-	// FIXME : Implement any periodic updates or checks needed for VEX UART communication
+	TickType_t currentTick = xTaskGetTickCount();
+	digitalRead(1);
+	switch(currentVexAction)
+	{
+		case ROBOT_STOP :
+		{
+			leftMotorOutput = 0;
+			rightMotorOutput = 0;
+			uartPrintf(VEX, "motor %d %d", leftMotorOutput, rightMotorOutput);
+			break;
+		}
+		case ROBOT_MOVE_WITH_COMPASS :
+		{
+			//TODO : Implement motor control logic to move robot based on compass data and target angle
+			break;
+		}
+		case ROBOT_RFID_APPROACHING :
+		{
+			leftMotorOutput = 10; // FIXME : set appropriate motor output for approaching action
+			rightMotorOutput = 10; // FIXME : set appropriate motor output for approaching action
+			uartPrintf(VEX, "motor %d %d", leftMotorOutput, rightMotorOutput);
+			break;
+		}
+		case ROBOT_RFID_ALIGNING :
+		{
+			/* ================================================================================================
+			this state used to skip uart update when robot is aligning to target angle after RFID tag detection
+			check the mfrcRobotAction function. the robot control logic is there.
+			================================================================================================ */
+			break;
+		}
+	}
+
+	vTaskDelayUntil(&currentTick, pdMS_TO_TICKS(VEX_UPDATE_INTERVAL_MS));
 }
 
 void voiceUartListener(void *param)
@@ -337,7 +387,6 @@ void uartPrintf(const uart_port_t uart_num, const char *format, ...)
 }
 
 // QMC5883P Magnetometer ===================================================
-
 void compassInit()
 {
 	I2C1.begin(I2CSDA, I2CSCL, I2C_FREQ);
@@ -403,7 +452,6 @@ void compassDataPolling(void *param)
 }
 
 // MFRC522 RFID Reader =====================================================
-
 void mfrcInit()
 {
 	SPI.begin(SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN);
@@ -437,10 +485,12 @@ void mfrcDataPolling(void *param)
 				}
 				Serial.println();
 			#endif
-			// TODO : decrease robot speed to align position by tagging card on center RFID.
+			currentVexAction = ROBOT_RFID_APPROACHING;
 		}
 		if(centerRFID.PICC_IsNewCardPresent() && centerRFID.PICC_ReadCardSerial())
 		{
+			currentVexAction = ROBOT_STOP; // Stop the robot before processing the detected RFID tag for alignment
+
 			RFIDData detectedData;
 			memcpy(detectedData.uid, centerRFID.uid.uidByte, centerRFID.uid.size);
 			detectedData.uidLength = centerRFID.uid.size;
@@ -453,7 +503,6 @@ void mfrcDataPolling(void *param)
 				}
 				Serial.println();
 			#endif
-
 			mfrcRobotAction(&detectedData);
 		}
 
@@ -480,7 +529,19 @@ void mfrcRobotAction(const RFIDData *data)
 				}
 				Serial.printf(", Target Angle: %.2f\n", targetAngle);
 			#endif
-			// TODO : Implement robot action to align to targetAngle using compass data
+			currentVexAction = ROBOT_RFID_APPROACHING;
+
+			//TODO : Implement logic to set target angle for robot alignment based on matched RFID tag data
+			xTaskCreate
+			(
+				mfrcRobotAction, 
+				"rfidAlignTask", 
+				4096,
+				NULL,
+				1,
+				NULL
+			);
+			
 		}
 
 		if(!matchFound)
@@ -492,9 +553,23 @@ void mfrcRobotAction(const RFIDData *data)
 	}
 }
 
-// ESPNOW Communication ====================================================
+void mfrcRobotAction(void *param)
+{
+	TickType_t currentTick = xTaskGetTickCount();
 
-// ESP NOW Communication ========================================================
+	const float targetAngle = ((RFIDData *) param)->angle;
+
+	while(azimuth == -9999.0F) vTaskDelayUntil(&currentTick, pdMS_TO_TICKS(50));
+
+	while(abs(azimuth - targetAngle) > RFIDAlignDeadband)
+	{
+		//TODO : Implement control logic to adjust motor outputs based on current azimuth and target angle for alignment
+		vTaskDelayUntil(&currentTick, pdMS_TO_TICKS(VEX_RFID_ALIGN_INTERVAL_MS));
+	}
+	vTaskDelete(NULL);
+}
+
+// ESPNOW Communication ====================================================
 void espNowInit(void)
 {
     WiFi.mode(WIFI_STA);
@@ -511,7 +586,7 @@ void espNowInit(void)
         esp_now_peer_info_t peerInfo = {};
         peerInfo.channel = ESP_NOW_CHANNEL;
         peerInfo.encrypt = false;
-        if(i == CurrentBoard)	//TODO : refactor with CurrentBoardID
+        if(i == CurrentBoard)	//FIXME : refactor with CurrentBoardID
         {
             peerInfo.peer_addr[0] = 0x02; // Locally Administered dummy Address
         }
