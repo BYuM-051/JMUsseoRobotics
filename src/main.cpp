@@ -10,6 +10,20 @@ void loop();
 
 // Project Board Info ======================================================
 // Read Readme.md for more details about the board and pinout
+
+/*
+R 	3v3			
+K 	GND		
+W 	SCK			A0
+G 	MISO		A1
+B 	MOSI		A2
+Br 	Front SDA	A3
+Y 	Front RST	A4
+Pu 	Center SDA	A5
+O 	Center RST	A6
+
+*/
+
 #define MAX_BOARDS 4 
 
 constexpr uint8_t MAC_ADDR [MAX_BOARDS][6] = 
