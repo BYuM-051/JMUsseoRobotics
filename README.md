@@ -89,7 +89,6 @@ flowchart LR
     MAG -->|segment tracking data| R1
 
     F -->|route table / building node data| R1
-    R1 -->|robot telemetry / node event / status| F
 
     U -->|voice input| R2
     R2 -->|recognized speech / intent| R1
