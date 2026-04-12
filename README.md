@@ -129,5 +129,5 @@ flowchart LR
     BNX -->|sensor packet via ESP-NOW| B0
 
     B0 -->|aggregated building status| F
-    <!-- F -->|configuration / thresholds / table data| B0 -->
+
 ```
