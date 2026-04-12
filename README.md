@@ -99,8 +99,10 @@ flowchart LR
 
     R1 -->|movement / rotation / stop command| R0
     R0 -->|actuator status / execution result| R1
+```
 
 Building Monitoring System
+```Mermaid
 flowchart LR
     F[(W0 Firebase)]
     B0[B0\nCentral Building Status Processor]
@@ -126,3 +128,4 @@ flowchart LR
 
     B0 -->|aggregated building status| F
     F -->|configuration / thresholds / table data| B0
+```
