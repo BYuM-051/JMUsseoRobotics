@@ -61,10 +61,11 @@ W0 REST API URL :
     - > 
 
 
-== Mermaid DFD
+## Mermaid DFD
 
-```Mermaid
-EVAC Guide Robot
+### EVAC Guide Robot
+
+```mermaid
 flowchart LR
     U[User]
     F[(W0 Firebase)]
@@ -101,8 +102,9 @@ flowchart LR
     R0 -->|actuator status / execution result| R1
 ```
 
-Building Monitoring System
-```Mermaid
+### Building Monitoring System
+
+```mermaid
 flowchart LR
     F[(W0 Firebase)]
     B0[B0\nCentral Building Status Processor]
