@@ -63,6 +63,7 @@ W0 REST API URL :
 
 == Mermaid DFD
 
+```Mermaid
 EVAC Guide Robot
 flowchart LR
     U[User]
